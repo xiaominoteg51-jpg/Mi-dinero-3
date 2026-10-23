@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#2563eb">
+<meta name="description" content="Registra tus ingresos y gastos, consulta tu calendario y controla tu saldo diario.">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png" type="image/png">
+<title>Mi Dinero</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:#f3f6fb;color:#172033}
+header{background:#2563eb;color:#fff;padding:22px 18px;border-radius:0 0 24px 24px}
+h1{margin:0 0 5px}.sub{opacity:.9}
+main{max-width:850px;margin:auto;padding:16px}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.card{background:#fff;border-radius:18px;padding:16px;box-shadow:0 4px 16px #0001;margin-top:16px}
+.cards .card{margin-top:0}
+.label{font-size:13px;color:#687386}
+.value{font-size:23px;font-weight:bold;margin-top:7px;overflow-wrap:anywhere}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+input,button{width:100%;padding:13px;border-radius:12px;border:1px solid #d7ddea;font-size:16px}
+input{background:#fff;color:#172033}
+input[readonly]{background:#f3f6fb}
+button{background:#2563eb;color:#fff;border:0;font-weight:bold;cursor:pointer}
+button:active{transform:scale(.99)}
+.danger{background:#dc2626}
+.item{display:flex;justify-content:space-between;align-items:center;gap:10px;background:#fff;padding:13px;border:1px solid #e4e9f1;border-radius:14px;margin:8px 0;overflow-wrap:anywhere}
+.item small{display:block;color:#687386;margin-top:4px}
+.item button{width:auto;min-width:44px;padding:9px 12px;background:#dc2626}
+.in{color:#15803d}.out{color:#dc2626}
+.calendar-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.calendar-header button{width:45px;padding:10px}
+.month{font-size:19px;font-weight:bold;text-align:center;flex:1}
+.weekdays,.calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
+.weekdays div{text-align:center;font-size:12px;color:#687386;padding:5px}
+.day{min-width:0;min-height:65px;background:#f7f9fc;border:1px solid #d7ddea;border-radius:10px;padding:6px;color:#172033;text-align:left}
+.day.empty{background:transparent;border:0;pointer-events:none}
+.day.today{outline:2px solid #2563eb}
+.day.selected{background:#dbeafe;border-color:#2563eb}
+.day-number{font-weight:bold;font-size:13px}
+.day-balance{font-size:11px;margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.positive{color:#15803d}.negative{color:#dc2626}.zero{color:#687386}
+.daily-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.summary-box{background:#f7f9fc;border-radius:12px;padding:12px;min-width:0;overflow-wrap:anywhere}
+.summary-label{font-size:12px;color:#687386;margin-bottom:5px}
+.notice{padding:12px;border-radius:12px;background:#eff6ff;color:#1d4ed8;margin-top:12px;font-size:14px}
+.empty-message{color:#687386;text-align:center;padding:14px}
+@media(max-width:600px){.cards{grid-template-columns:1fr}.row{grid-template-columns:1fr}.daily-summary{grid-template-columns:1fr}.day{min-height:58px;padding:4px}.day-balance{font-size:10px}.value{font-size:21px}}
+</style>
+</head>
+<body>
+<header>
+<h1>💰 Mi Dinero</h1>
+<div class="sub">Control diario de ingresos, gastos y ahorro</div>
+</header>
+<main>
+<section class="cards">
+<div class="card"><div class="label">Ingresos totales</div><div class="value" id="income">Bs 0.00</div></div>
+<div class="card"><div class="label">Gastos totales</div><div class="value" id="expense">Bs 0.00</div></div>
+<div class="card"><div class="label">Saldo disponible</div><div class="value" id="balance">Bs 0.00</div></div>
+</section>
+
+<section class="card">
+<h2>➕ Registrar movimiento</h2>
+<div class="row">
+<input id="amount" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="Monto en Bs" aria-label="Monto en bolivianos">
+<input id="desc" type="text" maxlength="120" placeholder="Descripción" aria-label="Descripción del movimiento">
+</div>
+<p class="label">Fecha del movimiento (automática)</p>
+<input id="date" type="date" readonly aria-label="Fecha automática">
+<br><br>
+<div class="row">
+<button type="button" onclick="add('in')">💵 Registrar ingreso</button>
+<button type="button" class="danger" onclick="add('out')">💸 Registrar gasto</button>
+</div>
+<div id="status" class="notice" role="status" hidden></div>
+</section>
+
+<section class="card">
+<h2>📅 Calendario mensual</h2>
+<div class="calendar-header">
+<button type="button" onclick="changeMonth(-1)" aria-label="Mes anterior">‹</button>
+<div class="month" id="monthTitle"></div>
+<button type="button" onclick="changeMonth(1)" aria-label="Mes siguiente">›</button>
+</div>
+<div class="weekdays"><div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div>Sáb</div><div>Dom</div></div>
+<div class="calendar" id="calendar"></div>
+<p class="label">Selecciona un día para consultar sus movimientos. Los importes del calendario son el saldo neto de ese día.</p>
+</section>
+
+<section class="card">
+<h2>📊 Resumen del día</h2>
+<p id="selectedDateText"></p>
+<div class="daily-summary">
+<div class="summary-box"><div class="summary-label">Ingresos</div><strong class="in" id="dayIncome">Bs 0.00</strong></div>
+<div class="summary-box"><div class="summary-label">Gastos</div><strong class="out" id="dayExpense">Bs 0.00</strong></div>
+<div class="summary-box"><div class="summary-label">Saldo del día</div><strong id="dayBalance">Bs 0.00</strong></div>
+</div>
+<br><div class="label">Saldo acumulado hasta este día</div>
+<div class="value" id="accumulated">Bs 0.00</div>
+</section>
+
+<section class="card"><h2>📋 Movimientos del día</h2><div id="dayList"></div></section>
+<section class="card"><h2>📋 Todos los movimientos</h2><div id="list"></div><br><button type="button" class="danger" onclick="clearAll()">🗑️ Borrar todos los movimientos</button></section>
+</main>
+<script>
+'use strict';
+const K = 'miDineroMovimientos';
+let data = loadData();
+let selectedDate = today();
+let currentMonth = new Date();
+currentMonth.setDate(1);
+
+function today(){
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function loadData(){
+  try {
+    const raw = localStorage.getItem(K);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(x => x && (x.type === 'in' || x.type === 'out') &&
+      Number.isFinite(Number(x.amount)) && Number(x.amount) > 0 &&
+      typeof x.date === 'string').map(x => ({
+        id: String(x.id || (Date.now() + Math.random())),
+        type: x.type,
+        amount: Number(x.amount),
+        desc: String(x.desc || (x.type === 'in' ? 'Ingreso' : 'Gasto')),
+        date: x.date
+      }));
+  } catch (e) {
+    console.error('No se pudieron leer los movimientos guardados:', e);
+    return [];
+  }
+}
+function money(n){ return 'Bs ' + (Number(n) || 0).toLocaleString('es-BO',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function setStatus(message, isError=false){
+  const el=document.getElementById('status');
+  el.textContent=message;
+  el.hidden=!message;
+  el.style.background=isError?'#fef2f2':'#eff6ff';
+  el.style.color=isError?'#b91c1c':'#1d4ed8';
+}
+function save(){
+  try {
+    localStorage.setItem(K, JSON.stringify(data));
+    // Confirm that the browser can read back the stored records.
+    const check = JSON.parse(localStorage.getItem(K) || 'null');
+    if (!Array.isArray(check) || check.length !== data.length) throw new Error('La verificación del guardado falló.');
+    return true;
+  } catch (e) {
+    console.error('No se pudieron guardar los movimientos:', e);
+    setStatus('No se pudo guardar. Abre la aplicación en el navegador y verifica que no esté en modo incógnito ni tenga bloqueado el almacenamiento.', true);
+    return false;
+  }
+}
+function dayTotals(date){
+  let income=0, expense=0;
+  data.forEach(x=>{ if(x.date===date){ if(x.type==='in') income+=x.amount; else expense+=x.amount; } });
+  return {income,expense,balance:income-expense};
+}
+function totalThrough(date){
+  return data.reduce((sum,x)=>sum+(x.date<=date?(x.type==='in'?x.amount:-x.amount):0),0);
+}
+function add(type){
+  // Date is always taken from the device's current local date, not an old form value.
+  const date=today();
+  const amountField=document.getElementById('amount');
+  const descField=document.getElementById('desc');
+  const amount=Number(amountField.value);
+  const desc=descField.value.trim();
+  if(!amountField.value.trim() || !Number.isFinite(amount) || amount<=0){
+    setStatus('Escribe un monto mayor que cero.',true); amountField.focus(); return;
+  }
+  if(!desc){ setStatus('Escribe una descripción para el movimiento.',true); descField.focus(); return; }
+  const record={id:(Date.now().toString(36)+Math.random().toString(36).slice(2,8)),type,amount,desc,date};
+  data.push(record);
+  if(!save()){
+    data.pop();
+    return;
+  }
+  selectedDate=date;
+  currentMonth=new Date(date+'T12:00:00');
+  currentMonth.setDate(1);
+  amountField.value='';
+  descField.value='';
+  document.getElementById('date').value=today();
+  setStatus((type==='in'?'Ingreso':'Gasto')+' guardado correctamente.');
+  render();
+}
+function deleteOne(id){
+  const old=data;
+  data=data.filter(x=>x.id!==id);
+  if(!save()){data=old;return;}
+  setStatus('Movimiento eliminado.');
+  render();
+}
+function clearAll(){
+  if(!data.length){setStatus('No hay movimientos para borrar.');return;}
+  if(!confirm('¿Seguro que quieres borrar TODOS los movimientos? Esta acción no se puede deshacer.')) return;
+  const old=data; data=[];
+  if(!save()){data=old;return;}
+  setStatus('Todos los movimientos fueron eliminados.');
+  render();
+}
+function changeMonth(delta){
+  currentMonth.setMonth(currentMonth.getMonth()+delta);
+  renderCalendar();
+}
+function selectDay(date){
+  selectedDate=date;
+  render();
+}
+function renderCalendar(){
+  const y=currentMonth.getFullYear(), m=currentMonth.getMonth();
+  document.getElementById('monthTitle').textContent=new Intl.DateTimeFormat('es-BO',{month:'long',year:'numeric'}).format(currentMonth);
+  const cal=document.getElementById('calendar');
+  cal.innerHTML='';
+  const firstDay=(new Date(y,m,1).getDay()+6)%7;
+  const days=new Date(y,m+1,0).getDate();
+  for(let i=0;i<firstDay;i++){
+    const blank=document.createElement('div'); blank.className='day empty'; cal.appendChild(blank);
+  }
+  for(let n=1;n<=days;n++){
+    const date=y+'-'+String(m+1).padStart(2,'0')+'-'+String(n).padStart(2,'0');
+    const totals=dayTotals(date);
+    const btn=document.createElement('button');
+    btn.type='button'; btn.className='day';
+    if(date===today()) btn.classList.add('today');
+    if(date===selectedDate) btn.classList.add('selected');
+    const net=totals.balance;
+    const cls=net>0?'positive':net<0?'negative':'zero';
+    btn.innerHTML='<div class="day-number">'+n+'</div><div class="day-balance '+cls+'">'+(totals.income||totals.expense?esc(money(net)):'—')+'</div>';
+    btn.setAttribute('aria-label',date+(totals.income||totals.expense?', saldo '+money(net):''));
+    btn.addEventListener('click',()=>selectDay(date));
+    cal.appendChild(btn);
+  }
+}
+function movementHtml(x){
+  const isIn=x.type==='in';
+  return '<div class="item"><div><strong>'+esc(x.desc)+'</strong><small>'+esc(x.date)+' · '+(isIn?'Ingreso':'Gasto')+'</small></div><div style="display:flex;align-items:center;gap:10px"><strong class="'+(isIn?'in':'out')+'">'+(isIn?'+':'−')+esc(money(x.amount))+'</strong><button type="button" aria-label="Eliminar movimiento" title="Eliminar" onclick="deleteOne(\''+esc(x.id)+'\')">✕</button></div></div>';
+}
+function renderLists(){
+  const dayItems=data.filter(x=>x.date===selectedDate).slice().sort((a,b)=>b.id.localeCompare(a.id));
+  const allItems=data.slice().sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
+  document.getElementById('dayList').innerHTML=dayItems.length?dayItems.map(movementHtml).join(''):'<div class="empty-message">No hay movimientos registrados este día.</div>';
+  document.getElementById('list').innerHTML=allItems.length?allItems.map(movementHtml).join(''):'<div class="empty-message">Todavía no hay movimientos. Registra tu primer ingreso o gasto arriba.</div>';
+}
+function render(){
+  // Refresh the date display in case the page stayed open across midnight.
+  document.getElementById('date').value=today();
+  const income=data.reduce((s,x)=>s+(x.type==='in'?x.amount:0),0);
+  const expense=data.reduce((s,x)=>s+(x.type==='out'?x.amount:0),0);
+  document.getElementById('income').textContent=money(income);
+  document.getElementById('expense').textContent=money(expense);
+  document.getElementById('balance').textContent=money(income-expense);
+  const t=dayTotals(selectedDate);
+  document.getElementById('selectedDateText').textContent=new Intl.DateTimeFormat('es-BO',{weekday:'long',day:'numeric',month:'long',year:'numeric'}).format(new Date(selectedDate+'T12:00:00'));
+  document.getElementById('dayIncome').textContent=money(t.income);
+  document.getElementById('dayExpense').textContent=money(t.expense);
+  const db=document.getElementById('dayBalance'); db.textContent=money(t.balance); db.className=t.balance>0?'in':t.balance<0?'out':'';
+  const accum=totalThrough(selectedDate); const ac=document.getElementById('accumulated'); ac.textContent=money(accum); ac.className='value '+(accum>0?'positive':accum<0?'negative':'zero');
+  renderCalendar(); renderLists();
+}
+document.getElementById('date').value=today();
+document.getElementById('amount').addEventListener('keydown',e=>{if(e.key==='Enter') document.getElementById('desc').focus();});
+document.getElementById('desc').addEventListener('keydown',e=>{if(e.key==='Enter') add('in');});
+window.addEventListener('storage',e=>{
+  if(e.key===K){data=loadData();render();setStatus('Los movimientos se actualizaron desde otra pestaña.');}
+});
+render();
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(err => console.warn('No se pudo activar el modo sin conexión:', err));
+  });
+}
+</script>
+</body>
+</html>
